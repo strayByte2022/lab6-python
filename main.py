@@ -81,9 +81,9 @@ def main():
     print(f"Process {rank} started (total: {size})")
 
     # Test with different data types
-    #test_integer_object()
+    test_integer_object()
     print("-" * 30)
-    test_dict_object()
+    #test_dict_object()
 
 
 if __name__ == "__main__":

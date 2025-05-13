@@ -1,12 +1,5 @@
 # Lab 6 Report: Coherent Distributed Object with Token Coherence (SWMR)
 
-## Requirement
-Implement a program that realizes a distributed object offering coherently replicated data. Devise and implement a mechanism that maintains the Single Writer, Multiple Reader (SWMR) invariant for each object using token coherence.
-
-- When a new process joins, it should broadcast a message to notify all other processes and initialize a new distributed object with the current coherence value.
-- Any inter-process communication method (MPI, RPC, etc.) may be used.
-- The report must describe the algorithm flow (flow chart, pseudocode, step-by-step demo, etc.) with detailed explanation.
-
 ## Overview
 This project implements a distributed object system in Python using MPI for inter-process communication. The system ensures data consistency across all processes by enforcing the SWMR invariant through a token-based coherence protocol.
 
@@ -23,109 +16,144 @@ This project implements a distributed object system in Python using MPI for inte
 - After a write, tokens are redistributed to allow multiple readers.
 - When a new process joins, it broadcasts its presence and requests the current value to synchronize.
 
-## Algorithm Flow
+## Detailed Algorithm Explanation
 
-### 1. Object Initialization Flow
-```mermaid
-graph TD
-    A[Process starts] --> B{Is this process 0?}
-    B -- Yes --> C[Create object with initial value]
-    B -- No --> D[Create empty object]
-    C --> E[Hold all tokens initially]
-    D --> F[Broadcast NEW_PROCESS message]
-    F --> G[Request current value from process 0]
-    G --> H[Update local object with received value]
-    E --> I[Start message listener thread]
-    H --> I
-Read Operation Flow
-mermaid
-graph TD
-    A[read() called] --> B{Has at least one token?}
-    B -->|Yes| C[Return local copy]
-    B -->|No| D[Request token from other processes]
-    D --> E[Wait for token]
-    E --> F{Received token?}
-    F -->|Yes| C
-    F -->|No| E
-Write Operation Flow
-mermaid
-graph TD
-    A[write() called] --> B{Has all tokens?}
-    B -->|Yes| C[Update local copy]
-    B -->|No| D[Request all tokens from other processes]
-    D --> E[Wait for all tokens]
-    E --> F{Have all tokens?}
-    F -->|Yes| C
-    F -->|No| E
-    C --> G[Broadcast update to all processes]
-    G --> H[Wait for acknowledgments]
-    H --> I[Redistribute tokens]
-Message Handling Flow
-mermaid
-graph TD
-    A[Receive message] --> B{What type?}
-    B -->|TOKEN_REQUEST| C[Process wants to read]
-    B -->|WRITE_REQUEST| D[Process wants to write]
-    B -->|DATA_UPDATE| E[Process updated value]
-    B -->|NEW_PROCESS| F[New process joined]
-    B -->|TOKEN_RELEASE| G[Receive tokens]
-    
-    C --> H{Can I spare tokens?}
-    H -->|Yes| I[Send token]
-    H -->|No| J[Ignore request]
-    
-    D --> K{Am I writing?}
-    K -->|No| L[Send all my tokens]
-    K -->|Yes| M[Ignore request]
-    
-    E --> N[Update local copy]
-    N --> O[Send acknowledgment]
-    
-    F --> P{Have excess tokens?}
-    P -->|Yes| Q[Send one token]
-    P -->|No| R[Ignore]
-    
-    G --> S[Increase token count]
-    S --> T[Notify waiting threads]
-Code Structure
-MessageType Enumeration
-Defines the types of messages that can be exchanged between processes:
+### Initialization
+- **Process 0** initializes the distributed object with the initial value and holds all tokens.
+- **Other processes** start with no tokens and an uninitialized object. Upon joining, each broadcasts a `NEW_PROCESS` message to all others and requests the current value from process 0. This ensures that late-joining processes synchronize their state with the current system state.
 
-TOKEN_REQUEST: Request for reading tokens
-TOKEN_RELEASE: Transferring tokens between processes
-READ_REQUEST: Request to read the current value
-WRITE_REQUEST: Request for all tokens to write
-NEW_PROCESS: Announcing a new process joining
-DATA_UPDATE: Broadcasting an updated value
-ACKNOWLEDGE: Confirming receipt of updates
-TokenManager Class
-acquire_read_token(): Ensures the process has at least one token for reading
-acquire_write_tokens(): Ensures the process has all tokens for writing
-release_tokens(): Redistributes tokens after writing
-handle_message(): Processes token-related messages
-announce_presence(): Notifies other processes when joining
-DistObj Class
-init(): Initializes the object and synchronizes with existing processes
-read(): Reads the object value (requires at least one token)
-write(): Updates the object value (requires all tokens)
-message_listener(): Background thread that handles incoming messages
-Testing Results
-The implementation was tested with both primitive types (integers) and complex types (dictionaries):
+### Read Operation
+- To read, a process must possess at least one token. If it does not, it sends a `TOKEN_REQUEST` to other processes and waits until a token is received. This guarantees that only processes with tokens can read, enforcing the SWMR invariant by preventing reads during exclusive writes.
+- Once a token is held, the process reads its local copy of the object. Since all writes require exclusive token ownership and broadcast updates, the local copy is always coherent.
 
-Integer Test: Each process reads and writes a simple integer value
-Dictionary Test: Demonstrates that the system works with more complex data structures
-The tests verify that:
+### Write Operation
+- To write, a process must acquire all tokens. If it does not have all tokens, it sends `WRITE_REQUEST` messages to all other processes and waits until all tokens are received.
+- Once all tokens are held, the process updates its local object value. It then broadcasts a `DATA_UPDATE` message to all other processes, ensuring that every replica is updated.
+- The process waits for acknowledgments (`ACKNOWLEDGE`) from all other processes, confirming that the update has been received and applied.
+- After acknowledgment, the process redistributes tokens to allow multiple readers, typically by releasing tokens back to other processes.
 
-All processes see consistent data
-Read operations require at least one token
-Write operations require all tokens
-New processes correctly initialize with the current value
-Updates are propagated to all processes
-Conclusion
-This implementation successfully demonstrates a coherent distributed object system using Python and MPI. The token coherence protocol ensures that the Single Writer, Multiple Reader invariant is maintained, preventing data races and ensuring consistency across all processes.
+### Token Management
+- **TokenManager** is responsible for tracking the number of tokens held, processing incoming token requests, and ensuring that tokens are only transferred when it is safe (e.g., not during a write operation).
+- When a process receives a `TOKEN_REQUEST` and is not writing, it can transfer a token if it has more than one. If it is writing or only has one token, it ignores the request.
+- When a process receives a `WRITE_REQUEST` and is not writing, it transfers all its tokens to the requester. If it is writing, it ignores the request.
 
-The modular design separates token management from the distributed object implementation, making it easy to extend or modify the system for different requirements.
+### New Process Join
+- When a new process joins, it broadcasts a `NEW_PROCESS` message. Other processes respond by sending a token if they have more than one, helping the new process to participate in reads.
+- The new process requests the current value from process 0, ensuring it starts with the correct, coherent state.
 
-## Run Instructions
+### Message Handling
+- Each process runs a background listener thread to handle incoming messages (token requests, data updates, new process notifications, etc.) asynchronously. This ensures responsiveness and correct protocol operation even as processes join or leave dynamically.
 
-To run the program, use the following command:
+### Pseudocode for Key Operations
+
+**Initialization:**
+```python
+// Initialization
+if rank == 0:
+    object.value = initial_value
+    tokens = total_processes
+else:
+    object.value = None
+    tokens = 0
+    broadcast NEW_PROCESS
+    request current value from process 0
+```
+![image](flows\object-initialization.png)
+
+**Read Operation:**
+```python
+// Read Operation
+if tokens >= 1:
+    return object.value
+else:
+    send TOKEN_REQUEST to other processes
+    wait until token received
+    return object.value
+```
+![image](flows\read-operation.png)
+
+**Write Operation:**
+```python
+// Write Operation
+if tokens == total_processes:
+    object.value = new_value
+    broadcast DATA_UPDATE to all processes
+    wait for ACKNOWLEDGE from all processes
+    redistribute tokens to allow multiple readers
+else:
+    send WRITE_REQUEST to all processes
+    wait until all tokens received
+    proceed as above
+```
+![image](flows\write-operation.png)
+
+**TokenManager Handling:**
+```python
+// TokenManager Handling
+on receive TOKEN_REQUEST:
+    if not writing and tokens > 1:
+        send one token to requester
+    else:
+        ignore request
+
+on receive WRITE_REQUEST:
+    if not writing:
+        send all tokens to requester
+    else:
+        ignore request
+```
+
+**New Process Join:**
+```python
+// New Process Join
+on process join:
+    broadcast NEW_PROCESS
+    request current value from process 0
+    update local object with received value
+```
+![image](flows\new-process-joins.png)
+
+**Message Listener:**
+```python
+// Message Listener (runs in background)
+while running:
+    receive and handle incoming messages (TOKEN_REQUEST, WRITE_REQUEST, DATA_UPDATE, NEW_PROCESS, ACKNOWLEDGE, etc.)
+```
+### Running the Program
+1. Locate to the folder where `main.py` is located.
+2. Run the program using the command: `mpiexec -n <num_processes> python main.py`
+3. The program will demonstrate the usage of the distributed object with both primitive and complex data types.
+
+
+### Output
+
+Try running the program with function ```test_integer_object()``` in ```main.py```
+```bash
+Process 1 received and ignored unexpected data: {'type': <MessageType.TOKEN_RELEASE: 2>, 'sender': 0, 'token_count': 1}
+Process 2 received and ignored unexpected data: {'type': <MessageType.TOKEN_RELEASE: 2>, 'sender': 0, 'token_count': 1}
+Process 3 received and ignored unexpected data: {'type': <MessageType.TOKEN_RELEASE: 2>, 'sender': 0, 'token_count': 1}
+Process 0 read dict: {'hello': 'world', 'count': 0}
+```
+
+Explaination:
+- Token Release Messages:
+    - Processes 1, 2, and 3 each received a ```TOKEN_RELEASE``` message from Process 0, indicating that Process 0 attempted to redistribute tokens (after a write or as part of protocol maintenance).
+    - The message was ignored by these processes because, according to the protocol logic, they were not in a state to accept or use the token at that moment (e.g., not waiting for a token, or not eligible to receive one). This is a safeguard to prevent incorrect token handling and ensures the SWMR invariant is maintained.
+- Read Confirmation:
+    - Process 0 read dict: ```{'hello': 'world', 'count': 0}``` shows that Process 0 successfully read the current value of the distributed object, confirming that the system is coherent and the protocol is functioning as intend
+
+Try running the program with function ```test_dict_object()``` in ```main.py```
+
+```bash
+Process 3 started (total: 4)
+Process 2 started (total: 4)
+Process 1 started (total: 4)
+Process 0 started (total: 4)
+Process 1 received and ignored unexpected data: {'type': <MessageType.NEW_PROCESS: 5>, 'sender': 0}
+Process 2 received and ignored unexpected data: {'type': <MessageType.NEW_PROCESS: 5>, 'sender': 0}
+Process 3 received and ignored unexpected data: {'type': <MessageType.NEW_PROCESS: 5>, 'sender': 0}
+Process 2 received and ignored unexpected data: {'type': <MessageType.TOKEN_RELEASE: 2>, 'sender': 0, 'token_count': 1}
+Process 3 received and ignored unexpected data: {'type': <MessageType.TOKEN_RELEASE: 2>, 'sender': 0, 'token_count': 1}
+Process 1 received and ignored unexpected data: {'type': <MessageType.TOKEN_RELEASE: 2>, 'sender': 0, 'token_count': 1}
+Process 0 read value: 42
+```
