@@ -58,7 +58,7 @@ else:
     broadcast NEW_PROCESS
     request current value from process 0
 ```
-![image](flows\object-initialization.png)
+![image](flows/object-initialization.png)
 
 **Read Operation:**
 ```python
@@ -70,7 +70,7 @@ else:
     wait until token received
     return object.value
 ```
-![image](flows\read-operation.png)
+![image](flows/read-operation.png)
 
 **Write Operation:**
 ```python
@@ -85,7 +85,7 @@ else:
     wait until all tokens received
     proceed as above
 ```
-![image](flows\write-operation.png)
+![image](flows/write-operation.png)
 
 **TokenManager Handling:**
 ```python
@@ -111,7 +111,7 @@ on process join:
     request current value from process 0
     update local object with received value
 ```
-![image](flows\new-process-joins.png)
+![image](flows/new-process-joins.png)
 
 **Message Listener:**
 ```python
