@@ -1,37 +1,38 @@
-Lab 6 Report: Coherent Distributed Object Implementation in Python
-Overview
-This report describes the implementation of a coherent distributed object system using Python and MPI. The system maintains data consistency across multiple processes using a token-based coherence protocol that preserves the Single Writer, Multiple Reader (SWMR) invariant.
+# Lab 6 Report: Coherent Distributed Object with Token Coherence (SWMR)
 
-Implementation Details
-Core Components
-TokenManager (token_manager.py)
-Manages token distribution between processes
-Ensures coherence by controlling read and write access
-Handles token requests and transfers
-DistObj (dist_obj.py)
-Implements the distributed object interface
-Maintains local data and synchronizes with other processes
-Handles message passing for data updates
-Main Program (main.py)
-Tests the implementation with different data types
-Demonstrates read and write operations across multiple processes
-Token Coherence Protocol
-The implementation uses a token-based coherence protocol with the following rules:
+## Requirement
+Implement a program that realizes a distributed object offering coherently replicated data. Devise and implement a mechanism that maintains the Single Writer, Multiple Reader (SWMR) invariant for each object using token coherence.
 
-The total number of tokens equals the number of processes
-Initially, process 0 holds all tokens
-To read an object, a process needs at least one token
-To write an object, a process needs all tokens
-After a write operation, tokens are redistributed to allow multiple readers
-Algorithm Flow
-Object Initialization Flow
-mermaid
+- When a new process joins, it should broadcast a message to notify all other processes and initialize a new distributed object with the current coherence value.
+- Any inter-process communication method (MPI, RPC, etc.) may be used.
+- The report must describe the algorithm flow (flow chart, pseudocode, step-by-step demo, etc.) with detailed explanation.
+
+## Overview
+This project implements a distributed object system in Python using MPI for inter-process communication. The system ensures data consistency across all processes by enforcing the SWMR invariant through a token-based coherence protocol.
+
+## Core Components
+- **TokenManager (`token_manager.py`)**: Manages token distribution, enforces SWMR, handles token requests and transfers.
+- **DistObj (`dist_obj.py`)**: Implements the distributed object interface, maintains local data, synchronizes updates, and manages message passing.
+- **Main Program (`main.py`)**: Demonstrates and tests the system with both primitive and complex data types.
+
+## Token Coherence Protocol
+- The total number of tokens equals the number of processes.
+- Initially, process 0 holds all tokens.
+- **Read**: A process must hold at least one token to read.
+- **Write**: A process must hold all tokens to write.
+- After a write, tokens are redistributed to allow multiple readers.
+- When a new process joins, it broadcasts its presence and requests the current value to synchronize.
+
+## Algorithm Flow
+
+### 1. Object Initialization Flow
+```mermaid
 graph TD
     A[Process starts] --> B{Is this process 0?}
-    B -->|Yes| C[Create object with initial value]
-    B -->|No| D[Create empty object]
+    B -- Yes --> C[Create object with initial value]
+    B -- No --> D[Create empty object]
     C --> E[Hold all tokens initially]
-    D --> F[Announce presence]
+    D --> F[Broadcast NEW_PROCESS message]
     F --> G[Request current value from process 0]
     G --> H[Update local object with received value]
     E --> I[Start message listener thread]
@@ -125,4 +126,6 @@ This implementation successfully demonstrates a coherent distributed object syst
 
 The modular design separates token management from the distributed object implementation, making it easy to extend or modify the system for different requirements.
 
-mpiexec -n 4 python main.py
+## Run Instructions
+
+To run the program, use the following command:
